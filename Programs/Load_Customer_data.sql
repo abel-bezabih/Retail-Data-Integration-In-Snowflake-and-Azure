@@ -1,0 +1,76 @@
+-- SELECT DATABASE AND SCHEMA
+USE DATABASE WAREHOUSE_DB.BRONZE;
+
+-- CREATE FILE FORMAT FOR CUSTOMER DATA
+CREATE OR REPLACE FILE FORMAT CSV_FORMAT
+TYPE = 'CSV'
+SKIP_HEADER=1
+NULL_IF = ('NULL','null','')
+FIELD_DELIMITER=','
+EMPTY_FIELD_AS_NULL = TRUE
+COMPRESSION = AUTO;
+
+--CREATING TABLE FOR CUSTOMER DATA
+CREATE TABLE IF NOT EXISTS RAW_CUSTOMER_DATA (
+customer_id	INT,
+name VARCHAR,
+email VARCHAR,
+country	STRING,
+customer_type STRING,
+registration_date DATE,
+age INT,
+gender STRING,
+total_purchases INT, 
+source_file_name STRING,
+source_file_row_number INT,
+created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+--CREATING TASK TO RUN IT ON SCHEDULED TIME
+CREATE OR REPLACE TASK CUSTOMER_DATA_TASK
+SCHEDULE = 'USING CRON 0 21 * * * UTC'
+WAREHOUSE = COMPUTE_WH 
+AS
+    COPY INTO RAW_CUSTOMER_DATA(
+    customer_id,
+    name,
+    email,
+    country,
+    customer_type,
+    registration_date,
+    age,
+    gender,
+    total_purchases,
+    source_file_name,
+    source_file_row_number,
+    created_at
+    )
+FROM (
+SELECT 
+$1,
+$2,
+$3,
+$4,
+$5,
+$6 :: DATE,
+$7,
+$8,
+$9,
+metadata$filename,
+metadata$file_row_number
+FROM @ADLS_STAGE/Customers/
+)
+FILE_FORMAT=(FORMAT_NAME='CSV_FORMAT')
+ON_ERROR = 'CONTINUE'
+PATTERN = '.*[.]csv';
+
+
+
+--WE NEED TO ALTER THE TASK AS WELL
+ALTER  TASK CUSTOMER_DATA_TASK RESUME;
+
+--WE CAN DESCRIBE THE TASK 
+DESCRIBE TASK CUSTOMER_DATA_TASK;
+
+EXECUTE TASK CUSTOMER_DATA_TASK;
+
